@@ -17,7 +17,7 @@ use Data::Dumper;
 my $url = 'https://discordapp.com/api/webhooks/<id>/<token>';
 
 # Create webhook client object
-my $webhook = Net::Discord::Webhook->new(url => $url);
+my $webhook = Net::Discord::Webhook->new(url => $url, verify_SSL => 1);
 
 # try a post
 #print Dumper($webhook);

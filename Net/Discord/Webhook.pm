@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 # Module for interacting with the REST service
-use LWP::UserAgent;
+use HTTP::Tiny;
 # JSON decode
 use JSON::PP qw(encode_json decode_json);
 # Base64 encode for avatar images
@@ -30,6 +30,7 @@ our $BASE_URL = 'https://discordapp.com/api';
 #   token and id
 #  Optional:
 #   timeout
+#   verify_SSL
 sub new
 {
   my $class = shift;
@@ -70,15 +71,14 @@ sub new
   else { croak "Must provide either URL, or ID and Token" }
 
   # Create an LWP UserAgent for REST requests
-  my $ua = LWP::UserAgent->new;
-  $ua->agent('p5-Net-Discord-Webhook (https://github.com/greg-kennedy/p5-Net-Discord-Webhook, ' . $VERSION . ')');
-  $ua->env_proxy;
-  $ua->cookie_jar( {} );
+  my %attributes = ( agent => 'p5-Net-Discord-Webhook (https://github.com/greg-kennedy/p5-Net-Discord-Webhook, ' . $VERSION . ')' );
+  if ($params{timeout}) { $attributes{timeout} = $params{timeout} }
+  if ($params{verify_SSL}) { $attributes{verify_SSL} = $params{verify_SSL} }
 
-  if ($params{timeout}) { $ua->timeout( $params{timeout} ) }
+  my $http = HTTP::Tiny->new( %attributes );
 
   # create class with some params
-  my $self = bless { id => $id, token => $token, ua => $ua }, $class;
+  my $self = bless { id => $id, token => $token, http => $http }, $class;
 
   # call get to populate additional details
   #$self->get();
@@ -100,7 +100,11 @@ sub _parse_response {
   }
 
   # store / update details
-  if (exists $response->{guild_id}) { $self->{guild_id} = $response->{guild_id} }
+  if (exists $response->{guild_id}) {
+    $self->{guild_id} = $response->{guild_id}
+  } else {
+    delete $self->{guild_id}
+  }
   $self->{channel_id} = $response->{channel_id};
   $self->{name} = $response->{name};
   $self->{avatar} = $response->{avatar};
@@ -114,17 +118,17 @@ sub get {
   my $self = shift;
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
-  my $response = $self->{ua}->get($url);
-  if ( ! $response->is_success ) {
-    carp "Warning: LWP::UserAgent->get($url) returned: " . $response->status_line . " '" . $response->decoded_content . "'";
-    return undef;
+  my $response = $self->{http}->get($url);
+  if ( ! $response->{success} ) {
+    carp "Warning: HTTP::Tiny->get($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    return;
   }
 
   # empty result
-  if (! $response->decoded_content) { return {} }
+  if (! $response->{content}) { return {} }
 
   # update internal structs and return
-  return $self->_parse_response(decode_json($response->decoded_content));
+  return $self->_parse_response(decode_json($response->{content}));
 }
 
 # PATCH request
@@ -190,37 +194,36 @@ sub modify {
 
   if (! %request) {
     carp "Modify request with no valid parameters";
-    return undef;
+    return;
   }
 
-  #my $response = $self->_req('/webhooks/' . $self->{id} . '/' . $self->{token}, 'PATCH', \%request);
-
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
-  my $response = $self->{ua}->patch($url, \%request);
-  if ( ! $response->is_success ) {
-    carp "Warning: LWP::UserAgent->patch($url) returned: " . $response->status_line . " (" . $response->decoded_content . ")";
-    return undef;
+  #my $response = $self->{http}->patch($url, \%request);
+  my $response = $self->{http}->request('PATCH', $url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
+  if ( ! $response->{success} ) {
+    carp "Warning: HTTP::Tiny->patch($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    return;
   }
 
   # empty result
-  if (! $response->decoded_content) { return {} }
+  if (! $response->{content}) { return {} }
 
   # update internal structs and return
-  return $self->_parse_response(decode_json($response->decoded_content));
+  return $self->_parse_response(decode_json($response->{content}));
 }
 
 sub delete {
   my $self = shift;
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
-  my $response = $self->{ua}->delete($url);
-  if ( ! $response->is_success ) {
-    carp "Warning: LWP::UserAgent->delete($url) returned: " . $response->status_line . " (" . $response->decoded_content . ")";
-    return undef;
+  my $response = $self->{http}->delete($url);
+  if ( ! $response->{success} ) {
+    carp "Warning: HTTP::Tiny->delete($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    return;
   }
 
   # return details
-  return $response;
+  return $response->{content};
 }
 
 sub execute {
@@ -272,18 +275,18 @@ sub execute {
   # switch mode for request based on file upload or no
   my $response;
   if (!defined $params{file}) {
-    $response = $self->{ua}->post($url, Content => encode_json(\%request), 'Content-Type' => 'application/json');
+    $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
   } else {
     croak "File uploads are not supported at this time";
   }
 
-  if ( ! $response->is_success ) {
-    carp "Warning: LWP::UserAgent->post($url) returned: " . $response->status_line . " (" . $response->decoded_content . ")";
-    return undef;
+  if ( ! $response->{success} ) {
+    carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    return;
   }
 
-  # return decoded response
-  return $response->decoded_content;
+  # return details
+  return $response->{content};
 }
 
 sub execute_slack {
@@ -301,6 +304,7 @@ sub execute_slack {
     $wait = shift;
   } elsif (ref($_[0]) eq 'SCALAR') {
     $json = ${+shift};
+    $wait = shift;
   } elsif (scalar @_ > 1) {
     (%params) = @_;
   } else {
@@ -314,14 +318,14 @@ sub execute_slack {
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/slack';
   if ($wait) { $url .= '?wait=true' }
 
-  my $response = $self->{ua}->post($url, Content => $json, 'Content-Type' => 'application/json');
-  if ( ! $response->is_success ) {
-    carp "Warning: LWP::UserAgent->post($url) returned: " . $response->status_line . " (" . $response->decoded_content . ")";
-    return undef;
+  my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => $json } );
+  if ( ! $response->{success} ) {
+    carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    return;
   }
 
-  # return decoded response
-  return $response->decoded_content;
+  # return details
+  return $response->{content};
 }
 
 sub execute_github {
@@ -355,14 +359,14 @@ sub execute_github {
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/github';
   if ($wait) { $url .= '?wait=true' }
 
-  my $response = $self->{ua}->post($url, Content => encode_json(\%params), 'Content-Type' => 'application/json', 'X-GitHub-Event' => $github_event);
-  if ( ! $response->is_success ) {
-    carp "Warning: LWP::UserAgent->post($url) returned: " . $response->status_line . " (" . $response->decoded_content . ")";
-    return undef;
+  my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json', 'X-GitHub-Event' => $github_event }, content => encode_json(\%params) } );
+  if ( ! $response->{success} ) {
+    carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    return;
   }
 
-  # return decoded response
-  return $response->decoded_content;
+  # return details
+  return $response->{content};
 }
 
 1;
@@ -410,7 +414,7 @@ located at L<https://discordapp.com/developers/docs/resources/webhook>.
 
 =head2 Methods
 
-=over 12
+=over
 
 =item C<new>
 
@@ -422,7 +426,10 @@ key, or C<token> plus C<id> keys, with values matching the Webhook created
 via the Discord UI.
 
 An optional parameter C<timeout> can be used to override the default timeout
-of the underlying L<LWP::UserAgent> object used for making web requests.
+of the underlying L<HTTP::Tiny> object used for making web requests.
+
+An optional parameter C<verify_SSL> can be used to enable SSL certificate
+verification on the underlying L<HTTP::Tiny> object.
 
 As a special case, if C<new> is called with a scalar parameter, it is assumed
 to be a C<url>.
@@ -433,10 +440,22 @@ Retrieves server-side information for the Webhook, and caches the result
 in the Net::Discord::Webhook object.  No parameters are expected.
 
 Information which can be returned from the remote service include:
-* guild_id: The guild ("server") which the Webhook currently posts to, if set
-* channel_id: The specific channel which the Webhook posts to
-* name: The current display name of the Webhook
-* avatar: A URL pointing to the current avatar used by the Webhook
+
+=over
+
+=item * guild_id:
+The guild ("server") which the Webhook currently posts to, if set
+
+=item * channel_id:
+The specific channel which the Webhook posts to
+
+=item * name:
+The current display name of the Webhook
+
+=item * avatar:
+A URL pointing to the current avatar used by the Webhook
+
+=back
 
 A hash containing the data is returned.  Additionally, the hash values are
 copied into the object itself, so they can be later retrieved by calling code
@@ -446,6 +465,12 @@ copied into the object itself, so they can be later retrieved by calling code
 
 Modifies the server-side information for the Webhook.  This can be used to
 alter the name the Webhook uses, the avatar, or both.
+
+This function should be passed a hash reference, containing (at least) a
+C<name> key or C<avatar> key (or both).
+
+For C<avatar>, the value should be the raw data bytes of a png, jpeg, or gif
+image.
 
 =item C<delete>
 

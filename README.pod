@@ -39,7 +39,7 @@ located at L<https://discordapp.com/developers/docs/resources/webhook>.
 
 =head2 Methods
 
-=over 12
+=over
 
 =item C<new>
 
@@ -51,7 +51,10 @@ key, or C<token> plus C<id> keys, with values matching the Webhook created
 via the Discord UI.
 
 An optional parameter C<timeout> can be used to override the default timeout
-of the underlying L<LWP::UserAgent> object used for making web requests.
+of the underlying L<HTTP::Tiny> object used for making web requests.
+
+An optional parameter C<verify_SSL> can be used to enable SSL certificate
+verification on the underlying L<HTTP::Tiny> object.
 
 As a special case, if C<new> is called with a scalar parameter, it is assumed
 to be a C<url>.
@@ -62,10 +65,22 @@ Retrieves server-side information for the Webhook, and caches the result
 in the Net::Discord::Webhook object.  No parameters are expected.
 
 Information which can be returned from the remote service include:
-* guild_id: The guild ("server") which the Webhook currently posts to, if set
-* channel_id: The specific channel which the Webhook posts to
-* name: The current display name of the Webhook
-* avatar: A URL pointing to the current avatar used by the Webhook
+
+=over
+
+=item * guild_id:
+The guild ("server") which the Webhook currently posts to, if set
+
+=item * channel_id:
+The specific channel which the Webhook posts to
+
+=item * name:
+The current display name of the Webhook
+
+=item * avatar:
+A URL pointing to the current avatar used by the Webhook
+
+=back
 
 A hash containing the data is returned.  Additionally, the hash values are
 copied into the object itself, so they can be later retrieved by calling code
@@ -75,6 +90,12 @@ copied into the object itself, so they can be later retrieved by calling code
 
 Modifies the server-side information for the Webhook.  This can be used to
 alter the name the Webhook uses, the avatar, or both.
+
+This function should be passed a hash reference, containing (at least) a
+C<name> key or C<avatar> key (or both).
+
+For C<avatar>, the value should be the raw data bytes of a png, jpeg, or gif
+image.
 
 =item C<delete>
 
