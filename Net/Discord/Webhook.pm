@@ -29,6 +29,7 @@ our $BASE_URL = 'https://discordapp.com/api';
 #   url, or
 #   token and id
 #  Optional:
+#   wait
 #   timeout
 #   verify_SSL
 sub new
@@ -79,6 +80,7 @@ sub new
 
   # create class with some params
   my $self = bless { id => $id, token => $token, http => $http }, $class;
+  if ($params{wait}) { $self->{wait} = 1 }
 
   # call get to populate additional details
   #$self->get();
@@ -231,13 +233,10 @@ sub execute {
 
   # extract params
   my %params;
-  my $wait;
   if (ref($_[0]) eq 'HASH') {
     %params = %{+shift};
-    $wait = shift;
   } elsif (ref($_[0]) eq 'ARRAY') {
     (%params) = @{+shift};
-    $wait = shift;
   }
   elsif (ref($_[0]) eq 'SCALAR') {
     $params{content} = ${+shift};
@@ -249,11 +248,9 @@ sub execute {
     $params{content} = shift;
   }
 
-  if (!defined $wait) { $wait = delete $params{wait} }
-
   # compose URL
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
-  if ($wait) { $url .= '?wait=true' }
+  if ($self->{wait}) { $url .= '?wait=true' }
 
   # test required fields
   if (!defined $params{content} && !defined $params{embed} && !defined $params{embeds} && !defined $params{file})
@@ -293,30 +290,25 @@ sub execute_slack {
   my $self = shift;
 
   my %params;
-  my $wait;
 
   my $json;
   if (ref($_[0]) eq 'HASH') {
     %params = %{+shift};
-    $wait = shift;
   } elsif (ref($_[0]) eq 'ARRAY') {
     (%params) = @{+shift};
-    $wait = shift;
   } elsif (ref($_[0]) eq 'SCALAR') {
     $json = ${+shift};
-    $wait = shift;
   } elsif (scalar @_ > 1) {
     (%params) = @_;
   } else {
     $json = shift;
   }
 
-  if (!defined $wait && %params) { $wait = delete $params{wait} }
   if (!defined $json) { $json = encode_json(\%params) }
 
   # create a slack-format post url
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/slack';
-  if ($wait) { $url .= '?wait=true' }
+  if ($self->{wait}) { $url .= '?wait=true' }
 
   my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => $json } );
   if ( ! $response->{success} ) {
@@ -333,31 +325,27 @@ sub execute_github {
 
   my %params;
   my $github_event;
-  my $wait;
 
   if (ref($_[0]) eq 'HASH') {
     %params = %{+shift};
     $github_event = shift;
-    $wait = shift;
   } elsif (ref($_[0]) eq 'ARRAY') {
     (%params) = @{+shift};
     $github_event = shift;
-    $wait = shift;
   } else {
     (%params) = @_;
   }
 
   if (!defined $github_event) {
-    $github_event = delete $params{wait};
+    $github_event = delete $params{github_event};
     if (!defined $github_event) {
       croak "execute_github() requires github_event parameter";
     }
   }
-  if (!defined $wait) { $wait = delete $params{wait} }
 
   # create a github-format post url
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/github';
-  if ($wait) { $url .= '?wait=true' }
+  if ($self->{wait}) { $url .= '?wait=true' }
 
   my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json', 'X-GitHub-Event' => $github_event }, content => encode_json(\%params) } );
   if ( ! $response->{success} ) {
@@ -430,6 +418,9 @@ of the underlying L<HTTP::Tiny> object used for making web requests.
 
 An optional parameter C<verify_SSL> can be used to enable SSL certificate
 verification on the underlying L<HTTP::Tiny> object.
+
+An optional parameter C<wait> causes webhook execution to block before return
+until Discord indicates the execution was successful.
 
 As a special case, if C<new> is called with a scalar parameter, it is assumed
 to be a C<url>.
