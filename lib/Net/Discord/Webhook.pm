@@ -90,7 +90,9 @@ sub new
 # updates internal structures after a webhook request
 sub _parse_response {
   my $self = shift;
-  my $response = shift;
+  my $json = shift;
+
+  my $response = decode_json($json);
 
   # sanity
   if ($self->{id} ne $response->{id}) {
@@ -119,17 +121,20 @@ sub get {
   my $self = shift;
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
+
   my $response = $self->{http}->get($url);
   if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->get($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    # non-200 code returned
+    carp "Warning: HTTP::Tiny->get($url) returned error (" . $response->{status} . " " . $response->{reason} . "): '" . $response->{content} . "'";
+    return;
+  } elsif (! $response->{content}) {
+    # empty result
+    carp "Warning: HTTP::Tiny->get($url) returned empty response (" . $response->{status} . " " . $response->{reason} . ")";
     return;
   }
 
-  # empty result
-  if (! $response->{content}) { return {} }
-
   # update internal structs and return
-  return $self->_parse_response(decode_json($response->{content}));
+  return $self->_parse_response($response->{content});
 }
 
 # PATCH request
@@ -138,19 +143,18 @@ sub modify {
   my $self = shift;
 
   my %params;
-  my $json;
   if (ref($_[0]) eq 'HASH') {
     %params = %{+shift};
   } elsif (ref($_[0]) eq 'ARRAY') {
     (%params) = @{+shift};
   } elsif (ref($_[0]) eq 'SCALAR') {
-    $json = ${+shift};
+    $params{name} = ${+shift};
   }
   elsif (scalar @_ > 1) {
     (%params) = @_;
   }
   else {
-    $json = shift;
+    $params{name} = shift;
   }
 
   my %request;
@@ -199,32 +203,37 @@ sub modify {
   }
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
+
+  # PATCH method not yet built-in as of 0.076
   #my $response = $self->{http}->patch($url, \%request);
   my $response = $self->{http}->request('PATCH', $url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
   if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->patch($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    # non-200 code returned
+    carp "Warning: HTTP::Tiny->patch($url) returned error (" . $response->{status} . " " . $response->{reason} . "): '" . $response->{content} . "'";
+    return;
+  } elsif (! $response->{content}) {
+    # empty result
+    carp "Warning: HTTP::Tiny->patch($url) returned empty response (" . $response->{status} . " " . $response->{reason} . ")";
     return;
   }
 
-  # empty result
-  if (! $response->{content}) { return {} }
-
   # update internal structs and return
-  return $self->_parse_response(decode_json($response->{content}));
+  return $self->_parse_response($response->{content});
 }
 
 sub delete {
   my $self = shift;
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
+
   my $response = $self->{http}->delete($url);
   if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->delete($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+    carp "Warning: HTTP::Tiny->delete($url) returned error (" . $response->{status} . " " . $response->{reason} . "): '" . $response->{content} . "'";
     return;
   }
 
-  # return details
-  return $response->{content};
+  # DELETE response is 204 NO CONTENT, simply return true if successful.
+  return 1;
 }
 
 sub execute {
@@ -412,14 +421,28 @@ This function should be passed a hash reference, containing either a C<url>
 key, or C<token> plus C<id> keys, with values matching the Webhook created
 via the Discord UI.
 
-An optional parameter C<timeout> can be used to override the default timeout
-of the underlying L<HTTP::Tiny> object used for making web requests.
+The following optional parameters are also available:
 
-An optional parameter C<verify_SSL> can be used to enable SSL certificate
-verification on the underlying L<HTTP::Tiny> object.
+=over
 
-An optional parameter C<wait> causes webhook execution to block before return
-until Discord indicates the execution was successful.
+=item * timeout
+
+Override the default timeout of the underlying L<HTTP::Tiny> object used for
+making web requests.
+
+=item * verify_SSL
+
+Enable SSL certificate verification on the underlying L<HTTP::Tiny> object.
+Note that this will probably require a trusted CA certificate list installed.
+
+=item * wait
+
+Webhook execution will block before returning, until the server confirms that
+he message was sent.  By default this is disabled (webhook execution is NOT
+synchronized), so the function may return success although a message does not
+actually post.
+
+=back
 
 As a special case, if C<new> is called with a scalar parameter, it is assumed
 to be a C<url>.
@@ -462,9 +485,16 @@ C<name> key or C<avatar> key (or both).
 For C<avatar>, the value should be the raw data bytes of a png, jpeg, or gif
 image.
 
+As a special case, if C<modify> is called with a scalar parameter, it is assumed
+to be a new username.
+
+The return value for this function is the same as C<get>, and the results
+are also cached as above.
+
 =item C<delete>
 
-Deletes the Webhook from the Discord service.
+Deletes the Webhook from the Discord service.  Returns True if successful,
+undef otherwise.
 
 B<Warning!>  Once a Webhook is deleted, the existing token and ID are no
 longer valid.  A server administrator will need to re-create the endpoint
@@ -475,13 +505,97 @@ probably best to leave this function alone.
 
 Executes a Webhook (posts a message).
 
+The function should be passed a hash reference containing a Discord webhook
+structure.  Discord allows several different methods to post to a channel.
+At least one of the following components is required:
+
+=over
+
+=item * content
+
+Post a plain-text message to the channel.  The message can be up to 2000
+Unicode characters in length.
+
+The value should be a scalar containing the message to post.
+
+=item * file
+
+Upload a file to the channel.
+
+The value should be a scalar containing the raw data bytes of the file.
+
+=item * embeds
+
+Post "embedded rich content" to the channel.  This is useful for posting
+messages with image attachments, colorful borders or backgrounds, etc.
+
+The value should be an array of embed objects to post.  These values are
+not checked by Net::Discord::Webhook.  For information on the expected
+data structure, refer to Discord's documentation on Channel Embed Objects:
+L<https://discordapp.com/developers/docs/resources/channel#embed-object>
+
+=back
+
+Additionally, these optional parameters can be used to change the behavior
+of the webhook:
+
+=over
+
+=item * username:
+Override the default username of the webhook (i.e. post this message under a
+different name).  To make a permanent username change, see C<modify>.
+
+=item * avatar_url:
+Override the default avatar of the webhook (i.e. post this message using the
+avatar at avatar_url).  To upload a new avatar to Discord, see C<modify>.
+
+=item * tts:
+If set, posts as a TTS message.  TTS messages appear as normal, but will also
+be read aloud to users in the channel (if permissions allow).
+
+=back
+
+As a special case, if a scalar is passed to this function, it is assumed to
+be a plain-text message to post via the "content" method.
+
+The return value for this function depends on the setting of C<wait> during
+webhook construction.  If C<wait> is False (default), the function returns
+immediately: parameters are checked for validity, but no attempt is made to
+verify that the message actually posted to the channel.  If C<wait> is True,
+function return is delayed until the message successfully posts.  The return
+value in this case is the contents of the posted message.
+
 =item C<execute_slack>
 
 Executes a Slack-compatible Webhook.
 
+The function should be passed either a scalar (assumed to be the JSON string
+contents of the Slack webhook), or a hash reference containing a Slack webhook
+structure (will be encoded to JSON using C<JSON::PP>).
+
+More information about the format of a Slack webhook is available on the
+Slack API reference at L<https://api.slack.com/incoming-webhooks>.
+
+This function's return value is similar to that of C<execute> (above).
+
 =item C<execute_github>
 
 Executes a Github-compatible Webhook.
+
+The function should be passed either a scalar (assumed to be the JSON string
+contents of the Github webhook), or a hash reference containing a Slack webhook
+structure (will be encoded to JSON using C<JSON::PP>).
+
+More information about the format of a Github webhook is available on the
+Github API reference at L<https://developer.github.com/webhooks>.
+
+B<Note:>  Posting a message using the C<execute_github> function is currently
+a specially-cased feature of Discord.  The webhook always appears as a user
+named "GitHub" with a custom avatar, ignoring any existing styling.  Thus it
+should NOT be used as a general-purpose posting function.  However, it may be
+useful to proxy messages from GitHub and repost them on Discord.
+
+This function's return value is similar to that of C<execute> (above).
 
 =back
 

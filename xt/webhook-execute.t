@@ -1,37 +1,42 @@
-#!/usr/bin/env perl
-use v5.014;
+use strict;
 use warnings;
 
-# Perl WebSocket test client
+# Perl Webhook test client
 #  Greg Kennedy 2019
-
-use FindBin;
-use lib "$FindBin::Bin";
+use Test::More;
 
 use Net::Discord::Webhook;
 
-use JSON::PP qw(encode_json decode_json);
-use Data::Dumper;
+use JSON::PP qw(decode_json);
+
+use Getopt::Long;
+
+my $url;
+GetOptions( "url=s"   => \$url ) or die("Error in command line arguments.");
+if (!defined $url) { BAIL_OUT( "Error: --url is required: try running with `prove -b xt :: --url <discord_webhook_url>`" ) }
 
 #####################
-my $url = 'https://discordapp.com/api/webhooks/<id>/<token>';
 
 # Create webhook client object
-my $webhook = Net::Discord::Webhook->new(url => $url, verify_SSL => 1);
+my $webhook;
+ok( $webhook = Net::Discord::Webhook->new(url => $url, wait => 1), "Create webhook object" );
+
+# Get data
+ok( $webhook->get(), "GET method" );
+
+# go change my name and avatar
+open my $fp, '<:raw', 'xt/data/mandrill.png' or die $!;
+read $fp, my $image, -s 'xt/data/mandrill.png';
+close $fp;
+
+ok( $webhook->modify( name => "Webhook Test", avatar => { data => $image } ), "PATCH method" );
+is( $webhook->{name}, 'Webhook Test', 'Name change OK' );
 
 # try a post
 #print Dumper($webhook);
+$webhook->execute( username => "Definitely NOT Webhook Test", content => "This is a Webhook Test!", tts => 1 );
 
-# go change my name and avatar
-open my $fp, '<:raw', 'mandrill.png' or die $!;
-read $fp, my $image, -s 'mandrill.png';
-close $fp;
-
-#$webhook->modify( name => "Webhook Test", avatar => { data => $image } );
-
-# send slack hook
-$webhook->execute_slack('{"text":"Allow me to reintroduce myself!"}');
-
+# send github hook
 my $json = decode_json('{
   "action": "opened",
   "number": 2,
@@ -487,5 +492,9 @@ my $json = decode_json('{
   }
 }');
 
-#$webhook->execute_github( $json, 'pull_request', 0 );
-#$webhook->execute( username => "Definitely NOT Webhook Test", content => "This is a Webhook Test!", tts => 1 );
+$webhook->execute_github( $json, 'pull_request', 0 );
+
+# send slack hook
+ok( $webhook->execute_slack('{"text":"Allow me to reintroduce myself!"}'), "execute_slack method" );
+
+done_testing();
