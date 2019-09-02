@@ -12,7 +12,7 @@ use JSON::PP qw(decode_json);
 use Getopt::Long;
 
 my $url;
-GetOptions( "url=s"   => \$url ) or die("Error in command line arguments.");
+GetOptions( "url=s"   => \$url ) or BAIL_OUT("Error in command line arguments.");
 if (!defined $url) { BAIL_OUT( "Error: --url is required: try running with `prove -b xt :: --url <discord_webhook_url>`" ) }
 
 #####################
@@ -29,12 +29,17 @@ open my $fp, '<:raw', 'xt/data/mandrill.png' or die $!;
 read $fp, my $image, -s 'xt/data/mandrill.png';
 close $fp;
 
-ok( $webhook->modify( name => "Webhook Test", avatar => { data => $image } ), "PATCH method" );
+ok( $webhook->modify( name => "Webhook Test", avatar => $image ), "PATCH method - new name and avatar" );
+#ok( $webhook->modify( avatar => undef ), "PATCH method" );
 is( $webhook->{name}, 'Webhook Test', 'Name change OK' );
+is( $webhook->modify("0123456789ABCDEF" x 32), undef, "PATCH method - name too long" );
 
 # try a post
 #print Dumper($webhook);
-$webhook->execute( username => "Definitely NOT Webhook Test", content => "This is a Webhook Test!", tts => 1 );
+ok( $webhook->execute( content => "This is a Webhook Test!", tts => 1 ), 'execute method' );
+
+# post a file
+ok( $webhook->execute( username => 'FileUploadTest', content => 'Monkey see, monkey do!', file => $image, filename => 'monkey.png' ), 'file upload' );
 
 # send github hook
 my $json = decode_json('{
@@ -491,8 +496,8 @@ my $json = decode_json('{
     "site_admin": false
   }
 }');
-
-$webhook->execute_github( $json, 'pull_request', 0 );
+$json->{github_event} = 'pull_request';
+ok( $webhook->execute_github( %{$json} ), "execute_github method" );
 
 # send slack hook
 ok( $webhook->execute_slack('{"text":"Allow me to reintroduce myself!"}'), "execute_slack method" );

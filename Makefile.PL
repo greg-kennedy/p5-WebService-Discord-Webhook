@@ -11,5 +11,6 @@ WriteMakefile(
       'JSON::PP' => 0,
       'MIME::Base64' => 0,
       'Carp' => 0,
+      'File::Spec' => 0,
     },
  );

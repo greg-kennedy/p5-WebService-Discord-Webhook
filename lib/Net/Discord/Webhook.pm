@@ -11,6 +11,8 @@ use JSON::PP qw(encode_json decode_json);
 use MIME::Base64 qw(encode_base64);
 # better error messages
 use Carp qw(croak carp);
+# Parse filename from filepath
+use File::Spec;
 
 # PACKAGE VARS
 our $VERSION = '1.00';
@@ -18,12 +20,10 @@ our $VERSION = '1.00';
 # Base URL for all API requests
 our $BASE_URL = 'https://discordapp.com/api';
 
-#use Data::Dumper;
-
 ##################################################
 
 # Create a new Webhook object.
-#  Pass either a bare hash or hash reference
+#  Pass a hash containing parameters
 #  Requires:
 #   url, or
 #   token and id
@@ -31,24 +31,15 @@ our $BASE_URL = 'https://discordapp.com/api';
 #   wait
 #   timeout
 #   verify_SSL
+#  A single scalar is treated as a URL
 sub new
 {
   my $class = shift;
 
   my %params;
-  if (ref($_[0]) eq 'HASH') {
-    %params = %{+shift};
-  }
-  elsif (ref($_[0]) eq 'ARRAY') {
-    (%params) = @{+shift};
-  }
-  elsif (ref($_[0]) eq 'SCALAR') {
-    $params{url} = ${+shift};
-  }
-  elsif (scalar @_ > 1) {
-    (%params) = @_;
-  }
-  else {
+  if (scalar @_ > 1) {
+    %params = @_;
+  } else {
     $params{url} = shift;
   }
 
@@ -117,6 +108,7 @@ sub _parse_response {
 
 # GET request
 #  Retrieves some info about the webhook setup
+#  No parameters
 sub get {
   my $self = shift;
 
@@ -143,17 +135,9 @@ sub modify {
   my $self = shift;
 
   my %params;
-  if (ref($_[0]) eq 'HASH') {
-    %params = %{+shift};
-  } elsif (ref($_[0]) eq 'ARRAY') {
-    (%params) = @{+shift};
-  } elsif (ref($_[0]) eq 'SCALAR') {
-    $params{name} = ${+shift};
-  }
-  elsif (scalar @_ > 1) {
-    (%params) = @_;
-  }
-  else {
+  if (scalar @_ > 1) {
+    %params = @_;
+  } else {
     $params{name} = shift;
   }
 
@@ -163,35 +147,21 @@ sub modify {
   if (defined $params{name}) { $request{name} = $params{name} }
 
   if (exists $params{avatar}) {
-    if (defined $params{avatar}{data}) {
+    if (defined $params{avatar}) {
+      # try to infer type from data string
       my $type;
-      if (defined $params{avatar}{type}) {
-        my $desired_type = lc($params{avatar}{type});
-
-        if ($desired_type eq 'jpg' || $desired_type eq 'jpeg' || $desired_type eq 'image/jpg' || $desired_type eq 'image/jpeg') {
-          $type = 'image/jpeg';
-        } elsif ($desired_type eq 'png' || $desired_type eq 'image/png') {
-          $type = 'image/png';
-        } elsif ($desired_type eq 'gif' || $desired_type eq 'image/gif') {
-          $type = 'image/gif';
-        } else {
-          $type = $desired_type;
-        }
+      if (substr($params{avatar}, 0, 8) eq "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a") {
+        $type = 'image/png';
+      } elsif (substr($params{avatar}, 0, 2) eq "\xff\xd8" && substr($params{avatar}, -2) eq "\xff\xd9") {
+        $type = 'image/jpeg';
+      } elsif (substr($params{avatar}, 0, 4) eq 'GIF8') {
+        $type = 'image/gif';
       } else {
-        # try to infer type from data string
-        if (substr($params{avatar}{data}, 0, 8) eq "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a") {
-          $type = 'image/png';
-        } elsif (substr($params{avatar}{data}, 0, 2) eq "\xff\xd8" && substr($params{avatar}{data}, -2) eq "\xff\xd9") {
-          $type = 'image/jpeg';
-        } elsif (substr($params{avatar}{data}, 0, 4) eq 'GIF8') {
-          $type = 'image/gif';
-        } else {
-          croak "Could not determine image type from data";
-        }
+        carp "Could not determine image type from data";
+        return;
       }
-
-      $request{avatar} = 'data:' . $type . ';base64,' . encode_base64($params{avatar}{data});
-
+  
+      $request{avatar} = 'data:' . $type . ';base64,' . encode_base64($params{avatar});
     } else {
       $request{avatar} = undef;
     }
@@ -221,6 +191,7 @@ sub modify {
   return $self->_parse_response($response->{content});
 }
 
+# DELETE request - deletes the webhook
 sub delete {
   my $self = shift;
 
@@ -236,23 +207,23 @@ sub delete {
   return 1;
 }
 
+# EXECUTE - posts the message.
+# Required parameters: one of
+#  content
+#  file and/or filename
+#  embed or embeds
+# Optional paremeters:
+#  username
+#  avatar_url
+#  tts
 sub execute {
   my $self = shift;
 
   # extract params
   my %params;
-  if (ref($_[0]) eq 'HASH') {
-    %params = %{+shift};
-  } elsif (ref($_[0]) eq 'ARRAY') {
-    (%params) = @{+shift};
-  }
-  elsif (ref($_[0]) eq 'SCALAR') {
-    $params{content} = ${+shift};
-  }
-  elsif (scalar @_ > 1) {
-    (%params) = @_;
-  }
-  else {
+  if (scalar @_ > 1) {
+    %params = @_;
+  } else {
     $params{content} = shift;
   }
 
@@ -261,17 +232,21 @@ sub execute {
   if ($self->{wait}) { $url .= '?wait=true' }
 
   # test required fields
-  if (!defined $params{content} && !defined $params{embed} && !defined $params{embeds} && !defined $params{file})
+  if (! ($params{content} || $params{embed} || $params{embeds} || $params{file} || $params{filename}) )
   {
-    croak "Execute request missing required parameters (must have at least content, embeds or file)";
+    carp "Execute request missing required parameters (must have at least content, embeds or file)";
+    return;
+  } elsif ( ($params{embed} || $params{embeds}) && ($params{file} || $params{filename}) )
+  {
+    carp "Execute request: cannot combine file and embeds request in one call.";
+    return;
   }
 
   # construct JSON request
   my %request;
-  if ($params{content}) { $request{content} = $params{content} }
 
-  if ($params{embeds}) { $request{embeds} = $params{embeds} }
-  elsif ($params{embed}) { $request{embeds} = [ $params{embed} ] }
+  # all messages types may have these params
+  if ($params{content}) { $request{content} = $params{content} }
 
   if (defined $params{username}) { $request{username} = $params{username} }
   if (defined $params{avatar_url}) { $request{avatar_url} = $params{avatar_url} }
@@ -279,10 +254,63 @@ sub execute {
 
   # switch mode for request based on file upload or no
   my $response;
-  if (!defined $params{file}) {
+  if (! ($params{file} || $params{filename})) {
+    # This is a regular, no-fuss JSON request
+    if ($params{embeds}) { $request{embeds} = $params{embeds} }
+    elsif ($params{embed}) { $request{embeds} = [ $params{embed} ] }
+
     $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
   } else {
-    croak "File uploads are not supported at this time";
+    # File upload
+    my $file;
+    my $filename;
+
+    # did not provide a file - we need to open it from disk
+    if (! $params{file}) {
+      # go change my name and avatar
+      my $size = -s $params{filename};
+      open(my $fp, '<:raw', $params{filename}) or die $!;
+      read $fp, $file, $size;
+      close $fp;
+
+      # set filename to basename(filename)
+      $filename = (File::Spec->splitpath( $params{filename} ))[2];
+    } elsif (! $params{filename}) {
+      $file = $params{file};
+      $filename = 'unknown.bin';
+    } else {
+      # they provided both
+      $file = $params{file};
+      $filename = (File::Spec->splitpath( $params{filename} ))[2];
+    }
+
+    # Construct a multipart/form-data message
+    my @chars = ('A' .. 'Z', 'a' .. 'z', '0' .. '9');
+    my $boundary = '';
+    for (my $i = 0; $i < 16; $i ++) {
+      $boundary .= $chars[rand @chars];
+    }
+
+    my $content = '';
+    $content .= "\r\n--$boundary\r\n";
+    $content .= "Content-Disposition: form-data; name=\"file1\"; filename=\"$filename\"\r\n";
+# Discord ignores content-type
+  #  $content .= "Content-Type: $type\r\n";
+    $content .= "\r\n";
+    $content .= $params{file} . "\r\n";
+
+    $content .= "\r\n--$boundary\r\n";
+    $content .= "Content-Disposition: form-data; name=\"payload_json\";\r\n";
+    $content .= "Content-Type: application/json\r\n";
+    $content .= "\r\n";
+    $content .= encode_json(\%request) . "\r\n";
+
+    $content .= "\r\n--$boundary--\r\n";
+
+    $response = $self->{http}->post($url, {
+      headers => {'Content-Type' => "multipart/form-data; boundary=$boundary"},
+      content => $content
+    });
   }
 
   if ( ! $response->{success} ) {
@@ -297,22 +325,13 @@ sub execute {
 sub execute_slack {
   my $self = shift;
 
-  my %params;
-
   my $json;
-  if (ref($_[0]) eq 'HASH') {
-    %params = %{+shift};
-  } elsif (ref($_[0]) eq 'ARRAY') {
-    (%params) = @{+shift};
-  } elsif (ref($_[0]) eq 'SCALAR') {
-    $json = ${+shift};
-  } elsif (scalar @_ > 1) {
-    (%params) = @_;
+  if (scalar @_ > 1) {
+    my %params = @_;
+    $json = encode_json(\%params);
   } else {
     $json = shift;
   }
-
-  if (!defined $json) { $json = encode_json(\%params) }
 
   # create a slack-format post url
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/slack';
@@ -334,21 +353,11 @@ sub execute_github {
   my %params;
   my $github_event;
 
-  if (ref($_[0]) eq 'HASH') {
-    %params = %{+shift};
-    $github_event = shift;
-  } elsif (ref($_[0]) eq 'ARRAY') {
-    (%params) = @{+shift};
-    $github_event = shift;
-  } else {
-    (%params) = @_;
-  }
+  %params = @_;
 
+  $github_event = delete $params{github_event};
   if (!defined $github_event) {
-    $github_event = delete $params{github_event};
-    if (!defined $github_event) {
-      croak "execute_github() requires github_event parameter";
-    }
+    croak "execute_github() requires github_event parameter";
   }
 
   # create a github-format post url
@@ -375,13 +384,21 @@ __END__
 
 Net::Discord::Webhook - A module for posting messages to Discord chat service
 
+=head1 VERSION
+
+version 1.00
+
 =head1 SYNOPSIS
 
     use Net::Discord::Webhook;
 
     my $webhook = Net::Discord::Webhook( $url );
 
-    $webhook->execute( { content => 'Hello, world!' } );
+    $webhook->get();
+    print "Webhook posting as '" . $webhook->{name} .
+      "' in channel " . $webhook->{channel_id} . "\n";
+
+    $webhook->execute( content => 'Hello, world!', tts => 1 );
 
     sleep(30);
 
@@ -408,16 +425,14 @@ where the first magic number ("2237...5344") is the C<id> and the second
 For more information on Discord Webhooks, see the Discord API documentation
 located at L<https://discordapp.com/developers/docs/resources/webhook>.
 
-=head2 Methods
+=head1 METHODS
 
-=over
-
-=item C<new>
+=head2 new
 
 Constructs and returns a new Net::Discord::Webhook object using the specified
 parameters.
 
-This function should be passed a hash reference, containing either a C<url>
+This function should be passed a hash, containing either a C<url>
 key, or C<token> plus C<id> keys, with values matching the Webhook created
 via the Discord UI.
 
@@ -447,7 +462,7 @@ actually post.
 As a special case, if C<new> is called with a scalar parameter, it is assumed
 to be a C<url>.
 
-=item C<get>
+=head2 get
 
 Retrieves server-side information for the Webhook, and caches the result
 in the Net::Discord::Webhook object.  No parameters are expected.
@@ -474,12 +489,12 @@ A hash containing the data is returned.  Additionally, the hash values are
 copied into the object itself, so they can be later retrieved by calling code
 (as in C<$webhook-E<gt>{channel_id}>).
 
-=item C<modify>
+=head2 modify
 
 Modifies the server-side information for the Webhook.  This can be used to
 alter the name the Webhook uses, the avatar, or both.
 
-This function should be passed a hash reference, containing (at least) a
+This function should be passed a hash, containing (at least) a
 C<name> key or C<avatar> key (or both).
 
 For C<avatar>, the value should be the raw data bytes of a png, jpeg, or gif
@@ -491,7 +506,7 @@ to be a new username.
 The return value for this function is the same as C<get>, and the results
 are also cached as above.
 
-=item C<delete>
+=head2 delete
 
 Deletes the Webhook from the Discord service.  Returns True if successful,
 undef otherwise.
@@ -501,11 +516,11 @@ longer valid.  A server administrator will need to re-create the endpoint
 through the Discord UI.  Unless you have very good reason to do this, it is
 probably best to leave this function alone.
 
-=item C<execute>
+=head2 execute
 
 Executes a Webhook (posts a message).
 
-The function should be passed a hash reference containing a Discord webhook
+The function should be passed a hash containing a Discord webhook
 structure.  Discord allows several different methods to post to a channel.
 At least one of the following components is required:
 
@@ -565,12 +580,12 @@ verify that the message actually posted to the channel.  If C<wait> is True,
 function return is delayed until the message successfully posts.  The return
 value in this case is the contents of the posted message.
 
-=item C<execute_slack>
+=head2 execute_slack
 
 Executes a Slack-compatible Webhook.
 
 The function should be passed either a scalar (assumed to be the JSON string
-contents of the Slack webhook), or a hash reference containing a Slack webhook
+contents of the Slack webhook), or a hash containing a Slack webhook
 structure (will be encoded to JSON using C<JSON::PP>).
 
 More information about the format of a Slack webhook is available on the
@@ -578,12 +593,12 @@ Slack API reference at L<https://api.slack.com/incoming-webhooks>.
 
 This function's return value is similar to that of C<execute> (above).
 
-=item C<execute_github>
+=head2 execute_github
 
 Executes a Github-compatible Webhook.
 
 The function should be passed either a scalar (assumed to be the JSON string
-contents of the Github webhook), or a hash reference containing a Slack webhook
+contents of the Github webhook), or a hash containing a Slack webhook
 structure (will be encoded to JSON using C<JSON::PP>).
 
 More information about the format of a Github webhook is available on the
@@ -596,8 +611,6 @@ should NOT be used as a general-purpose posting function.  However, it may be
 useful to proxy messages from GitHub and repost them on Discord.
 
 This function's return value is similar to that of C<execute> (above).
-
-=back
 
 =head1 LICENSE
 
