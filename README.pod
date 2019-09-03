@@ -126,7 +126,7 @@ assumed to be a new username.
 The return value for this function is the same as C<get>, and the results
 are also cached as above.
 
-=head2 delete
+=head2 destroy
 
 Deletes the Webhook from the Discord service.  Returns True if successful,
 undef otherwise.

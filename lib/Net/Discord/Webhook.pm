@@ -5,10 +5,13 @@ use warnings;
 
 # Module for interacting with the REST service
 use HTTP::Tiny;
+
 # JSON decode
 use JSON::PP qw(encode_json decode_json);
+
 # Base64 encode for avatar images
 use MIME::Base64 qw(encode_base64);
+
 # Parse filename from filepath
 use File::Spec;
 
@@ -33,45 +36,49 @@ our $BASE_URL = 'https://discordapp.com/api';
 #   timeout
 #   verify_SSL
 #  A single scalar is treated as a URL
-sub new
-{
+sub new {
   my $class = shift;
 
   my %params;
-  if (scalar @_ > 1) {
+  if ( scalar @_ > 1 ) {
     %params = @_;
   } else {
     $params{url} = shift;
   }
 
   # check parameters
-  my ($id, $token);
-  if ($params{url}) {
-    if ($params{url} =~ m/^\Q$BASE_URL\E\/webhooks\/(\d+)\/([^\/?]+)/) {
-      $id = $1;
+  my ( $id, $token );
+  if ( $params{url} ) {
+    if ( $params{url} =~ m/^\Q$BASE_URL\E\/webhooks\/(\d+)\/([^\/?]+)/ ) {
+      $id    = $1;
       $token = $2;
+    } else {
+      croak "Failed to parse ID and Token from URL";
     }
-    else { croak "Failed to parse ID and Token from URL" }
-  }
-  elsif ($params{id} && $params{token}) {
-    if ($params{id} =~ m/^\d+$/ && $params{token} =~ m/^[^\/?]+$/) {
-      $id = $params{id};
+  } elsif ( $params{id} && $params{token} ) {
+    if ( $params{id} =~ m/^\d+$/ && $params{token} =~ m/^[^\/?]+$/ ) {
+      $id    = $params{id};
       $token = $params{token};
+    } else {
+      croak "Failed to validate ID and Token";
     }
-    else { croak "Failed to validate ID and Token" }
+  } else {
+    croak "Must provide either URL, or ID and Token";
   }
-  else { croak "Must provide either URL, or ID and Token" }
 
   # Create an LWP UserAgent for REST requests
-  my %attributes = ( agent => 'p5-Net-Discord-Webhook (https://github.com/greg-kennedy/p5-Net-Discord-Webhook, ' . $VERSION . ')' );
-  if ($params{timeout}) { $attributes{timeout} = $params{timeout} }
-  if ($params{verify_SSL}) { $attributes{verify_SSL} = $params{verify_SSL} }
+  my %attributes =
+    ( agent =>
+"p5-Net-Discord-Webhook (https://github.com/greg-kennedy/p5-Net-Discord-Webhook, $VERSION)"
+    );
+  if ( $params{timeout} )    { $attributes{timeout}    = $params{timeout} }
+  if ( $params{verify_SSL} ) { $attributes{verify_SSL} = $params{verify_SSL} }
 
-  my $http = HTTP::Tiny->new( %attributes );
+  my $http = HTTP::Tiny->new(%attributes);
 
   # create class with some params
   my $self = bless { id => $id, token => $token, http => $http }, $class;
-  if ($params{wait}) { $self->{wait} = 1 }
+  if ( $params{wait} ) { $self->{wait} = 1 }
 
   # call get to populate additional details
   #$self->get();
@@ -87,22 +94,28 @@ sub _parse_response {
   my $response = decode_json($json);
 
   # sanity
-  if ($self->{id} ne $response->{id}) {
-    carp "Warning: get() returned ID='" . $response->{id} . "', expected ID='" . $self->{id} . "'"
+  if ( $self->{id} ne $response->{id} ) {
+    carp "Warning: get() returned ID='"
+      . $response->{id}
+      . "', expected ID='"
+      . $self->{id} . "'";
   }
-  if ($self->{token} ne $response->{token}) {
-    carp "Warning: get() returned Token='" . $response->{token} . "', expected Token='" . $self->{token} . "'"
+  if ( $self->{token} ne $response->{token} ) {
+    carp "Warning: get() returned Token='"
+      . $response->{token}
+      . "', expected Token='"
+      . $self->{token} . "'";
   }
 
   # store / update details
-  if ($response->{guild_id}) {
-    $self->{guild_id} = $response->{guild_id}
+  if ( $response->{guild_id} ) {
+    $self->{guild_id} = $response->{guild_id};
   } else {
-    delete $self->{guild_id}
+    delete $self->{guild_id};
   }
   $self->{channel_id} = $response->{channel_id};
-  $self->{name} = $response->{name};
-  $self->{avatar} = $response->{avatar};
+  $self->{name}       = $response->{name};
+  $self->{avatar}     = $response->{avatar};
 
   return $response;
 }
@@ -116,18 +129,25 @@ sub get {
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
 
   my $response = $self->{http}->get($url);
-  if ( ! $response->{success} ) {
+  if ( !$response->{success} ) {
+
     # non-200 code returned
-    carp "Warning: HTTP::Tiny->get($url) returned error (" . $response->{status} . " " . $response->{reason} . "): '" . $response->{content} . "'";
+    carp "Warning: HTTP::Tiny->get($url) returned error ("
+      . $response->{status} . " "
+      . $response->{reason} . "): '"
+      . $response->{content} . "'";
     return;
-  } elsif (! $response->{content}) {
+  } elsif ( !$response->{content} ) {
+
     # empty result
-    carp "Warning: HTTP::Tiny->get($url) returned empty response (" . $response->{status} . " " . $response->{reason} . ")";
+    carp "Warning: HTTP::Tiny->get($url) returned empty response ("
+      . $response->{status} . " "
+      . $response->{reason} . ")";
     return;
   }
 
   # update internal structs and return
-  return $self->_parse_response($response->{content});
+  return $self->_parse_response( $response->{content} );
 }
 
 # PATCH request
@@ -136,37 +156,44 @@ sub modify {
   my $self = shift;
 
   my %params;
-  if (scalar @_ > 1) {
+  if ( scalar @_ > 1 ) {
     %params = @_;
   } else {
     $params{name} = shift;
   }
 
   # check params
-  if (! ($params{name} || exists $params{avatar})) {
+  if ( !( $params{name} || exists $params{avatar} ) ) {
     croak "Modify request with no valid parameters";
   }
 
   my %request;
 
   # retrieve the two allowed params and place in request if needed
-  if ($params{name}) { $request{name} = $params{name} }
+  if ( $params{name} ) { $request{name} = $params{name} }
 
-  if (exists $params{avatar}) {
-    if ($params{avatar}) {
+  if ( exists $params{avatar} ) {
+    if ( $params{avatar} ) {
+
       # try to infer type from data string
       my $type;
-      if (substr($params{avatar}, 0, 8) eq "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a") {
+      if (
+        substr( $params{avatar}, 0, 8 ) eq "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a" )
+      {
         $type = 'image/png';
-      } elsif (substr($params{avatar}, 0, 2) eq "\xff\xd8" && substr($params{avatar}, -2) eq "\xff\xd9") {
+      } elsif ( substr( $params{avatar}, 0, 2 ) eq "\xff\xd8"
+        && substr( $params{avatar}, -2 ) eq "\xff\xd9" )
+      {
         $type = 'image/jpeg';
-      } elsif (substr($params{avatar}, 0, 4) eq 'GIF8') {
+      } elsif ( substr( $params{avatar}, 0, 4 ) eq 'GIF8' ) {
         $type = 'image/gif';
       } else {
-        croak "Could not determine image type from data (not a valid png, jpeg or gif image)";
+        croak
+"Could not determine image type from data (not a valid png, jpeg or gif image)";
       }
 
-      $request{avatar} = 'data:' . $type . ';base64,' . encode_base64($params{avatar});
+      $request{avatar} =
+        'data:' . $type . ';base64,' . encode_base64( $params{avatar} );
     } else {
       $request{avatar} = undef;
     }
@@ -176,30 +203,46 @@ sub modify {
 
   # PATCH method not yet built-in as of 0.076
   #my $response = $self->{http}->patch($url, \%request);
-  my $response = $self->{http}->request('PATCH', $url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
-  if ( ! $response->{success} ) {
+  my $response = $self->{http}->request(
+    'PATCH', $url,
+    {
+      headers => { 'Content-Type' => 'application/json' },
+      content => encode_json( \%request )
+    }
+  );
+  if ( !$response->{success} ) {
+
     # non-200 code returned
-    carp "Warning: HTTP::Tiny->patch($url) returned error (" . $response->{status} . " " . $response->{reason} . "): '" . $response->{content} . "'";
+    carp "Warning: HTTP::Tiny->patch($url) returned error ("
+      . $response->{status} . " "
+      . $response->{reason} . "): '"
+      . $response->{content} . "'";
     return;
-  } elsif (! $response->{content}) {
+  } elsif ( !$response->{content} ) {
+
     # empty result
-    carp "Warning: HTTP::Tiny->patch($url) returned empty response (" . $response->{status} . " " . $response->{reason} . ")";
+    carp "Warning: HTTP::Tiny->patch($url) returned empty response ("
+      . $response->{status} . " "
+      . $response->{reason} . ")";
     return;
   }
 
   # update internal structs and return
-  return $self->_parse_response($response->{content});
+  return $self->_parse_response( $response->{content} );
 }
 
 # DELETE request - deletes the webhook
-sub delete {
+sub destroy {
   my $self = shift;
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
 
   my $response = $self->{http}->delete($url);
-  if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->delete($url) returned error (" . $response->{status} . " " . $response->{reason} . "): '" . $response->{content} . "'";
+  if ( !$response->{success} ) {
+    carp "Warning: HTTP::Tiny->delete($url) returned error ("
+      . $response->{status} . " "
+      . $response->{reason} . "): '"
+      . $response->{content} . "'";
     return;
   }
 
@@ -221,22 +264,21 @@ sub execute {
 
   # extract params
   my %params;
-  if (scalar @_ > 1) {
+  if ( scalar @_ > 1 ) {
     %params = @_;
   } else {
     $params{content} = shift;
   }
 
   # convenience params
-  if ($params{file}) { $params{files} = [ delete $params{file} ] }
-  if ($params{embed}) { $params{embeds} = [ delete $params{embed} ] }
+  if ( $params{file} )  { $params{files}  = [ delete $params{file} ] }
+  if ( $params{embed} ) { $params{embeds} = [ delete $params{embed} ] }
 
   # test required fields
-  if (! ($params{content} || $params{files} || $params{embeds}))
-  {
-    croak "Execute request missing required parameters (must have at least content, embed, or file)";
-  } elsif ( $params{embeds} && $params{files} )
-  {
+  if ( !( $params{content} || $params{files} || $params{embeds} ) ) {
+    croak
+"Execute request missing required parameters (must have at least content, embed, or file)";
+  } elsif ( $params{embeds} && $params{files} ) {
     croak "Execute request: cannot combine file and embed request in one call.";
   }
 
@@ -244,40 +286,51 @@ sub execute {
   my %request;
 
   # all messages types may have these params
-  if ($params{content}) { $request{content} = $params{content} }
+  if ( $params{content} ) { $request{content} = $params{content} }
 
-  if ($params{username}) { $request{username} = $params{username} }
-  if ($params{avatar_url}) { $request{avatar_url} = $params{avatar_url} }
-  if ($params{tts}) { $request{tts} = JSON::PP::true }
+  if ( $params{username} )   { $request{username}   = $params{username} }
+  if ( $params{avatar_url} ) { $request{avatar_url} = $params{avatar_url} }
+  if ( $params{tts} )        { $request{tts}        = JSON::PP::true }
 
   # compose URL
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
-  if ($self->{wait}) { $url .= '?wait=true' }
+  if ( $self->{wait} ) { $url .= '?wait=true' }
 
   # switch mode for request based on file upload or no
   my $response;
-  if (! $params{files}) {
-    # This is a regular, no-fuss JSON request
-    if ($params{embeds}) { $request{embeds} = $params{embeds} }
+  if ( !$params{files} ) {
 
-    $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
+    # This is a regular, no-fuss JSON request
+    if ( $params{embeds} ) { $request{embeds} = $params{embeds} }
+
+    $response = $self->{http}->post(
+      $url,
+      {
+        headers => { 'Content-Type' => 'application/json' },
+        content => encode_json( \%request )
+      }
+    );
   } else {
+
     # File upload, construct a multipart/form-data message
     #  32 random chars to make a boundary
-    my @chars = ('A' .. 'Z', 'a' .. 'z', '0' .. '9');
+    my @chars    = ( 'A' .. 'Z', 'a' .. 'z', '0' .. '9' );
     my $boundary = '';
-    for (my $i = 0; $i < 32; $i ++) {
-      $boundary .= $chars[rand @chars];
+    for ( my $i = 0; $i < 32; $i++ ) {
+      $boundary .= $chars[ rand @chars ];
     }
 
     # Build request body
     my $content = '';
 
-    for (my $i = 0; $i < scalar @{$params{files}}; $i ++)
-    {
+    for ( my $i = 0; $i < scalar @{ $params{files} }; $i++ ) {
       my $file = $params{files}[$i];
       $content .= "\r\n--$boundary\r\n";
-      $content .= "Content-Disposition: form-data; name=\"file$i\"; filename=\"" . $file->{name} . "\"\r\n";
+      $content .=
+          "Content-Disposition: form-data; name=\"file$i\"; filename=\""
+        . $file->{name}
+        . "\"\r\n";
+
       # Discord ignores content-type, just put octet-stream for everything
       $content .= "Content-Type: application/octet-stream\r\n";
       $content .= "\r\n";
@@ -289,23 +342,30 @@ sub execute {
     $content .= "Content-Disposition: form-data; name=\"payload_json\";\r\n";
     $content .= "Content-Type: application/json\r\n";
     $content .= "\r\n";
-    $content .= encode_json(\%request) . "\r\n";
+    $content .= encode_json( \%request ) . "\r\n";
 
     $content .= "\r\n--$boundary--\r\n";
 
-    $response = $self->{http}->post($url, {
-      headers => {'Content-Type' => "multipart/form-data; boundary=$boundary"},
-      content => $content
-    });
+    $response = $self->{http}->post(
+      $url,
+      {
+        headers =>
+          { 'Content-Type' => "multipart/form-data; boundary=$boundary" },
+        content => $content
+      }
+    );
   }
 
-  if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+  if ( !$response->{success} ) {
+    carp "Warning: HTTP::Tiny->post($url) returned: "
+      . $response->{status} . " "
+      . $response->{reason} . ": '"
+      . $response->{content} . "'";
     return;
   }
 
   # return details, or just true if content is empty (wait=0)
-  if ($response->{content}) { return decode_json($response->{content}) }
+  if ( $response->{content} ) { return decode_json( $response->{content} ) }
   return 1;
 }
 
@@ -313,20 +373,25 @@ sub execute_slack {
   my $self = shift;
 
   my $json;
-  if (scalar @_ > 1) {
+  if ( scalar @_ > 1 ) {
     my %params = @_;
-    $json = encode_json(\%params);
+    $json = encode_json( \%params );
   } else {
     $json = shift;
   }
 
   # create a slack-format post url
-  my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/slack';
-  if ($self->{wait}) { $url .= '?wait=true' }
+  my $url =
+    $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/slack';
+  if ( $self->{wait} ) { $url .= '?wait=true' }
 
-  my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => $json } );
-  if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+  my $response = $self->{http}->post( $url,
+    { headers => { 'Content-Type' => 'application/json' }, content => $json } );
+  if ( !$response->{success} ) {
+    carp "Warning: HTTP::Tiny->post($url) returned: "
+      . $response->{status} . " "
+      . $response->{reason} . ": '"
+      . $response->{content} . "'";
     return;
   }
 
@@ -341,17 +406,30 @@ sub execute_github {
   my %params = @_;
 
   # check params
-  if (! ($params{event} && $params{json})) {
+  if ( !( $params{event} && $params{json} ) ) {
     croak "execute_github missing required event and json parameters";
   }
 
   # create a github-format post url
-  my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/github';
-  if ($self->{wait}) { $url .= '?wait=true' }
+  my $url =
+    $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/github';
+  if ( $self->{wait} ) { $url .= '?wait=true' }
 
-  my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json', 'X-GitHub-Event' => $params{event} }, content => $params{json} } );
-  if ( ! $response->{success} ) {
-    carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
+  my $response = $self->{http}->post(
+    $url,
+    {
+      headers => {
+        'Content-Type'   => 'application/json',
+        'X-GitHub-Event' => $params{event}
+      },
+      content => $params{json}
+    }
+  );
+  if ( !$response->{success} ) {
+    carp "Warning: HTTP::Tiny->post($url) returned: "
+      . $response->{status} . " "
+      . $response->{reason} . ": '"
+      . $response->{content} . "'";
     return;
   }
 
@@ -492,7 +570,7 @@ assumed to be a new username.
 The return value for this function is the same as C<get>, and the results
 are also cached as above.
 
-=head2 delete
+=head2 destroy
 
 Deletes the Webhook from the Discord service.  Returns True if successful,
 undef otherwise.
