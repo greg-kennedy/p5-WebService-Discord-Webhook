@@ -1,5 +1,5 @@
 use ExtUtils::MakeMaker;
- 
+
 WriteMakefile(
     NAME            => 'WebService::Discord::Webhook',
     AUTHOR          => 'Greg Kennedy <kennedy.greg@gmail.com>',
