@@ -9,10 +9,11 @@ use HTTP::Tiny;
 use JSON::PP qw(encode_json decode_json);
 # Base64 encode for avatar images
 use MIME::Base64 qw(encode_base64);
-# better error messages
-use Carp qw(croak carp);
 # Parse filename from filepath
 use File::Spec;
+
+# better error messages
+use Carp qw(croak carp);
 
 # PACKAGE VARS
 our $VERSION = '1.00';
@@ -45,14 +46,14 @@ sub new
 
   # check parameters
   my ($id, $token);
-  if (defined $params{url}) {
+  if ($params{url}) {
     if ($params{url} =~ m/^\Q$BASE_URL\E\/webhooks\/(\d+)\/([^\/?]+)/) {
       $id = $1;
       $token = $2;
     }
     else { croak "Failed to parse ID and Token from URL" }
   }
-  elsif (defined $params{id} && defined $params{token}) {
+  elsif ($params{id} && $params{token}) {
     if ($params{id} =~ m/^\d+$/ && $params{token} =~ m/^[^\/?]+$/) {
       $id = $params{id};
       $token = $params{token};
@@ -94,7 +95,7 @@ sub _parse_response {
   }
 
   # store / update details
-  if (exists $response->{guild_id}) {
+  if ($response->{guild_id}) {
     $self->{guild_id} = $response->{guild_id}
   } else {
     delete $self->{guild_id}
@@ -141,13 +142,18 @@ sub modify {
     $params{name} = shift;
   }
 
+  # check params
+  if (! ($params{name} || exists $params{avatar})) {
+    croak "Modify request with no valid parameters";
+  }
+
   my %request;
 
   # retrieve the two allowed params and place in request if needed
-  if (defined $params{name}) { $request{name} = $params{name} }
+  if ($params{name}) { $request{name} = $params{name} }
 
   if (exists $params{avatar}) {
-    if (defined $params{avatar}) {
+    if ($params{avatar}) {
       # try to infer type from data string
       my $type;
       if (substr($params{avatar}, 0, 8) eq "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a") {
@@ -157,19 +163,13 @@ sub modify {
       } elsif (substr($params{avatar}, 0, 4) eq 'GIF8') {
         $type = 'image/gif';
       } else {
-        carp "Could not determine image type from data";
-        return;
+        croak "Could not determine image type from data (not a valid png, jpeg or gif image)";
       }
-  
+
       $request{avatar} = 'data:' . $type . ';base64,' . encode_base64($params{avatar});
     } else {
       $request{avatar} = undef;
     }
-  }
-
-  if (! %request) {
-    carp "Modify request with no valid parameters";
-    return;
   }
 
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
@@ -210,8 +210,8 @@ sub delete {
 # EXECUTE - posts the message.
 # Required parameters: one of
 #  content
-#  file and/or filename
-#  embed or embeds
+#  files
+#  embeds
 # Optional paremeters:
 #  username
 #  avatar_url
@@ -227,19 +227,17 @@ sub execute {
     $params{content} = shift;
   }
 
-  # compose URL
-  my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
-  if ($self->{wait}) { $url .= '?wait=true' }
+  # convenience params
+  if ($params{file}) { $params{files} = [ delete $params{file} ] }
+  if ($params{embed}) { $params{embeds} = [ delete $params{embed} ] }
 
   # test required fields
-  if (! ($params{content} || $params{embed} || $params{embeds} || $params{file} || $params{filename}) )
+  if (! ($params{content} || $params{files} || $params{embeds}))
   {
-    carp "Execute request missing required parameters (must have at least content, embeds or file)";
-    return;
-  } elsif ( ($params{embed} || $params{embeds}) && ($params{file} || $params{filename}) )
+    croak "Execute request missing required parameters (must have at least content, embed, or file)";
+  } elsif ( $params{embeds} && $params{files} )
   {
-    carp "Execute request: cannot combine file and embeds request in one call.";
-    return;
+    croak "Execute request: cannot combine file and embed request in one call.";
   }
 
   # construct JSON request
@@ -248,57 +246,45 @@ sub execute {
   # all messages types may have these params
   if ($params{content}) { $request{content} = $params{content} }
 
-  if (defined $params{username}) { $request{username} = $params{username} }
-  if (defined $params{avatar_url}) { $request{avatar_url} = $params{avatar_url} }
+  if ($params{username}) { $request{username} = $params{username} }
+  if ($params{avatar_url}) { $request{avatar_url} = $params{avatar_url} }
   if ($params{tts}) { $request{tts} = JSON::PP::true }
+
+  # compose URL
+  my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
+  if ($self->{wait}) { $url .= '?wait=true' }
 
   # switch mode for request based on file upload or no
   my $response;
-  if (! ($params{file} || $params{filename})) {
+  if (! $params{files}) {
     # This is a regular, no-fuss JSON request
     if ($params{embeds}) { $request{embeds} = $params{embeds} }
-    elsif ($params{embed}) { $request{embeds} = [ $params{embed} ] }
 
     $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json' }, content => encode_json(\%request) } );
   } else {
-    # File upload
-    my $file;
-    my $filename;
-
-    # did not provide a file - we need to open it from disk
-    if (! $params{file}) {
-      # go change my name and avatar
-      my $size = -s $params{filename};
-      open(my $fp, '<:raw', $params{filename}) or die $!;
-      read $fp, $file, $size;
-      close $fp;
-
-      # set filename to basename(filename)
-      $filename = (File::Spec->splitpath( $params{filename} ))[2];
-    } elsif (! $params{filename}) {
-      $file = $params{file};
-      $filename = 'unknown.bin';
-    } else {
-      # they provided both
-      $file = $params{file};
-      $filename = (File::Spec->splitpath( $params{filename} ))[2];
-    }
-
-    # Construct a multipart/form-data message
+    # File upload, construct a multipart/form-data message
+    #  32 random chars to make a boundary
     my @chars = ('A' .. 'Z', 'a' .. 'z', '0' .. '9');
     my $boundary = '';
-    for (my $i = 0; $i < 16; $i ++) {
+    for (my $i = 0; $i < 32; $i ++) {
       $boundary .= $chars[rand @chars];
     }
 
+    # Build request body
     my $content = '';
-    $content .= "\r\n--$boundary\r\n";
-    $content .= "Content-Disposition: form-data; name=\"file1\"; filename=\"$filename\"\r\n";
-# Discord ignores content-type
-  #  $content .= "Content-Type: $type\r\n";
-    $content .= "\r\n";
-    $content .= $params{file} . "\r\n";
 
+    for (my $i = 0; $i < scalar @{$params{files}}; $i ++)
+    {
+      my $file = $params{files}[$i];
+      $content .= "\r\n--$boundary\r\n";
+      $content .= "Content-Disposition: form-data; name=\"file$i\"; filename=\"" . $file->{name} . "\"\r\n";
+      # Discord ignores content-type, just put octet-stream for everything
+      $content .= "Content-Type: application/octet-stream\r\n";
+      $content .= "\r\n";
+      $content .= $file->{data} . "\r\n";
+    }
+
+    # add the json payload for the rest of the message
     $content .= "\r\n--$boundary\r\n";
     $content .= "Content-Disposition: form-data; name=\"payload_json\";\r\n";
     $content .= "Content-Type: application/json\r\n";
@@ -318,8 +304,9 @@ sub execute {
     return;
   }
 
-  # return details
-  return $response->{content};
+  # return details, or just true if content is empty (wait=0)
+  if ($response->{content}) { return decode_json($response->{content}) }
+  return 1;
 }
 
 sub execute_slack {
@@ -343,35 +330,34 @@ sub execute_slack {
     return;
   }
 
-  # return details
-  return $response->{content};
+  # return details, or just true if content is empty (wait=0)
+  #  Slack request usually returns the string "ok"
+  return $response->{content} || 1;
 }
 
 sub execute_github {
   my $self = shift;
 
-  my %params;
-  my $github_event;
+  my %params = @_;
 
-  %params = @_;
-
-  $github_event = delete $params{github_event};
-  if (!defined $github_event) {
-    croak "execute_github() requires github_event parameter";
+  # check params
+  if (! ($params{event} && $params{json})) {
+    croak "execute_github missing required event and json parameters";
   }
 
   # create a github-format post url
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token} . '/github';
   if ($self->{wait}) { $url .= '?wait=true' }
 
-  my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json', 'X-GitHub-Event' => $github_event }, content => encode_json(\%params) } );
+  my $response = $self->{http}->post($url, { headers => { 'Content-Type' => 'application/json', 'X-GitHub-Event' => $params{event} }, content => $params{json} } );
   if ( ! $response->{success} ) {
     carp "Warning: HTTP::Tiny->post($url) returned: " . $response->{status} . " " . $response->{reason} . ": '" . $response->{content} . "'";
     return;
   }
 
-  # return details
-  return $response->{content};
+  # return details, or just true if content is empty (wait=0)
+  #  github request usually has no response
+  return $response->{content} || 1;
 }
 
 1;
@@ -455,7 +441,7 @@ Note that this will probably require a trusted CA certificate list installed.
 Webhook execution will block before returning, until the server confirms that
 he message was sent.  By default this is disabled (webhook execution is NOT
 synchronized), so the function may return success although a message does not
-actually post.
+actually post.  See C<execute> for more details.
 
 =back
 
@@ -500,8 +486,8 @@ C<name> key or C<avatar> key (or both).
 For C<avatar>, the value should be the raw data bytes of a png, jpeg, or gif
 image.
 
-As a special case, if C<modify> is called with a scalar parameter, it is assumed
-to be a new username.
+As a special case, if C<modify> is called with a scalar parameter, it is
+assumed to be a new username.
 
 The return value for this function is the same as C<get>, and the results
 are also cached as above.
@@ -528,26 +514,49 @@ At least one of the following components is required:
 
 =item * content
 
-Post a plain-text message to the channel.  The message can be up to 2000
-Unicode characters in length.
+Post a message to the channel.  The message can be up to 2000 Unicode
+characters in length.  Discord may format the message after receipt according
+to its usual Markdown rules.
 
 The value should be a scalar containing the message to post.
+
+C<content> can be combined with the other post methods as well, to attach
+a message along with an embed or file.
 
 =item * file
 
 Upload a file to the channel.
 
-The value should be a scalar containing the raw data bytes of the file.
+The value should be a hash reference with two keys: C<name> for the desired
+filename, and C<data> for the raw data bytes of the file.  Discord uses
+the file extension to determine whether to display it as an image, video,
+download, etc.
 
-=item * embeds
+C<file> cannot be combined with C<embed>.
+
+=item * files
+
+Similar to C<file>, but accepts an array of file hashref instead.  (Do not
+combine C<file> with C<files>.)
+
+Discord allows up to 10 file attachments in one request.
+
+=item * embed
 
 Post "embedded rich content" to the channel.  This is useful for posting
 messages with image attachments, colorful borders or backgrounds, etc.
 
-The value should be an array of embed objects to post.  These values are
+The value should be an embed object (hashref) to post.  These values are
 not checked by Net::Discord::Webhook.  For information on the expected
 data structure, refer to Discord's documentation on Channel Embed Objects:
 L<https://discordapp.com/developers/docs/resources/channel#embed-object>
+
+C<embed> cannot be combined with C<file>.
+
+=item * embeds
+
+Similar to C<embed>, but accepts an array of embed hashref instead.  (Do not
+combine C<embed> with C<embeds>.)
 
 =back
 
@@ -571,14 +580,17 @@ be read aloud to users in the channel (if permissions allow).
 =back
 
 As a special case, if a scalar is passed to this function, it is assumed to
-be a plain-text message to post via the "content" method.
+be a regular text message to post via the "content" method.
 
 The return value for this function depends on the setting of C<wait> during
 webhook construction.  If C<wait> is False (default), the function returns
 immediately: parameters are checked for validity, but no attempt is made to
-verify that the message actually posted to the channel.  If C<wait> is True,
-function return is delayed until the message successfully posts.  The return
-value in this case is the contents of the posted message.
+verify that the message actually posted to the channel.  The function will
+return True.
+
+If C<wait> is True, function return is delayed until the message successfully
+posts.  The return value in this case is a hashref containing details about
+the posted message.
 
 =head2 execute_slack
 
@@ -591,26 +603,30 @@ structure (will be encoded to JSON using C<JSON::PP>).
 More information about the format of a Slack webhook is available on the
 Slack API reference at L<https://api.slack.com/incoming-webhooks>.
 
-This function's return value is similar to that of C<execute> (above).
+This function returns True on success, and is also affected by the value
+of C<wait>.  Typically a Slack webhook returns the string C<"ok"> on
+success.
 
 =head2 execute_github
 
 Executes a Github-compatible Webhook.
 
-The function should be passed either a scalar (assumed to be the JSON string
-contents of the Github webhook), or a hash containing a Slack webhook
-structure (will be encoded to JSON using C<JSON::PP>).
+The function should be passed a hash containing two keys: C<json> as the
+JSON string of a Github webhook, and C<event> as the string containing
+the name of the Github event.  The value for C<event> is passed to Discord
+in the C<X-GitHub-Event> header.
 
 More information about the format of a Github webhook is available on the
 Github API reference at L<https://developer.github.com/webhooks>.
 
 B<Note:>  Posting a message using the C<execute_github> function is currently
 a specially-cased feature of Discord.  The webhook always appears as a user
-named "GitHub" with a custom avatar, ignoring any existing styling.  Thus it
+named "GitHub" with a custom avatar, ignoring any existing styling.  Thus, it
 should NOT be used as a general-purpose posting function.  However, it may be
 useful to proxy messages from GitHub and repost them on Discord.
 
-This function's return value is similar to that of C<execute> (above).
+This function returns True on success, and is also affected by the value
+of C<wait>.
 
 =head1 LICENSE
 

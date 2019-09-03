@@ -75,7 +75,7 @@ Note that this will probably require a trusted CA certificate list installed.
 Webhook execution will block before returning, until the server confirms that
 he message was sent.  By default this is disabled (webhook execution is NOT
 synchronized), so the function may return success although a message does not
-actually post.
+actually post.  See C<execute> for more details.
 
 =back
 
@@ -120,8 +120,8 @@ C<name> key or C<avatar> key (or both).
 For C<avatar>, the value should be the raw data bytes of a png, jpeg, or gif
 image.
 
-As a special case, if C<modify> is called with a scalar parameter, it is assumed
-to be a new username.
+As a special case, if C<modify> is called with a scalar parameter, it is
+assumed to be a new username.
 
 The return value for this function is the same as C<get>, and the results
 are also cached as above.
@@ -148,26 +148,49 @@ At least one of the following components is required:
 
 =item * content
 
-Post a plain-text message to the channel.  The message can be up to 2000
-Unicode characters in length.
+Post a message to the channel.  The message can be up to 2000 Unicode
+characters in length.  Discord may format the message after receipt according
+to its usual Markdown rules.
 
 The value should be a scalar containing the message to post.
+
+C<content> can be combined with the other post methods as well, to attach
+a message along with an embed or file.
 
 =item * file
 
 Upload a file to the channel.
 
-The value should be a scalar containing the raw data bytes of the file.
+The value should be a hash reference with two keys: C<name> for the desired
+filename, and C<data> for the raw data bytes of the file.  Discord uses
+the file extension to determine whether to display it as an image, video,
+download, etc.
 
-=item * embeds
+C<file> cannot be combined with C<embed>.
+
+=item * files
+
+Similar to C<file>, but accepts an array of file hashref instead.  (Do not
+combine C<file> with C<files>.)
+
+Discord allows up to 10 file attachments in one request.
+
+=item * embed
 
 Post "embedded rich content" to the channel.  This is useful for posting
 messages with image attachments, colorful borders or backgrounds, etc.
 
-The value should be an array of embed objects to post.  These values are
+The value should be an embed object (hashref) to post.  These values are
 not checked by Net::Discord::Webhook.  For information on the expected
 data structure, refer to Discord's documentation on Channel Embed Objects:
 L<https://discordapp.com/developers/docs/resources/channel#embed-object>
+
+C<embed> cannot be combined with C<file>.
+
+=item * embeds
+
+Similar to C<embed>, but accepts an array of embed hashref instead.  (Do not
+combine C<embed> with C<embeds>.)
 
 =back
 
@@ -191,14 +214,17 @@ be read aloud to users in the channel (if permissions allow).
 =back
 
 As a special case, if a scalar is passed to this function, it is assumed to
-be a plain-text message to post via the "content" method.
+be a regular text message to post via the "content" method.
 
 The return value for this function depends on the setting of C<wait> during
 webhook construction.  If C<wait> is False (default), the function returns
 immediately: parameters are checked for validity, but no attempt is made to
-verify that the message actually posted to the channel.  If C<wait> is True,
-function return is delayed until the message successfully posts.  The return
-value in this case is the contents of the posted message.
+verify that the message actually posted to the channel.  The function will
+return True.
+
+If C<wait> is True, function return is delayed until the message successfully
+posts.  The return value in this case is a hashref containing details about
+the posted message.
 
 =head2 execute_slack
 
@@ -211,26 +237,30 @@ structure (will be encoded to JSON using C<JSON::PP>).
 More information about the format of a Slack webhook is available on the
 Slack API reference at L<https://api.slack.com/incoming-webhooks>.
 
-This function's return value is similar to that of C<execute> (above).
+This function returns True on success, and is also affected by the value
+of C<wait>.  Typically a Slack webhook returns the string C<"ok"> on
+success.
 
 =head2 execute_github
 
 Executes a Github-compatible Webhook.
 
-The function should be passed either a scalar (assumed to be the JSON string
-contents of the Github webhook), or a hash containing a Slack webhook
-structure (will be encoded to JSON using C<JSON::PP>).
+The function should be passed a hash containing two keys: C<json> as the
+JSON string of a Github webhook, and C<event> as the string containing
+the name of the Github event.  The value for C<event> is passed to Discord
+in the C<X-GitHub-Event> header.
 
 More information about the format of a Github webhook is available on the
 Github API reference at L<https://developer.github.com/webhooks>.
 
 B<Note:>  Posting a message using the C<execute_github> function is currently
 a specially-cased feature of Discord.  The webhook always appears as a user
-named "GitHub" with a custom avatar, ignoring any existing styling.  Thus it
+named "GitHub" with a custom avatar, ignoring any existing styling.  Thus, it
 should NOT be used as a general-purpose posting function.  However, it may be
 useful to proxy messages from GitHub and repost them on Discord.
 
-This function's return value is similar to that of C<execute> (above).
+This function returns True on success, and is also affected by the value
+of C<wait>.
 
 =head1 LICENSE
 
