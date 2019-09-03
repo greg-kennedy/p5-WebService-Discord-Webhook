@@ -1,4 +1,4 @@
-package Net::Discord::Webhook;
+package WebService::Discord::Webhook;
 
 use strict;
 use warnings;
@@ -69,7 +69,7 @@ sub new {
   # Create an LWP UserAgent for REST requests
   my %attributes =
     ( agent =>
-"p5-Net-Discord-Webhook (https://github.com/greg-kennedy/p5-Net-Discord-Webhook, $VERSION)"
+"p5-WebService-Discord-Webhook (https://github.com/greg-kennedy/p5-WebService-Discord-Webhook, $VERSION)"
     );
   if ( $params{timeout} )    { $attributes{timeout}    = $params{timeout} }
   if ( $params{verify_SSL} ) { $attributes{verify_SSL} = $params{verify_SSL} }
@@ -446,7 +446,7 @@ __END__
 
 =head1 NAME
 
-Net::Discord::Webhook - A module for posting messages to Discord chat service
+WebService::Discord::Webhook - A module for posting messages to Discord chat service
 
 =head1 VERSION
 
@@ -454,9 +454,9 @@ version 1.00
 
 =head1 SYNOPSIS
 
-    use Net::Discord::Webhook;
+    use WebService::Discord::Webhook;
 
-    my $webhook = Net::Discord::Webhook( $url );
+    my $webhook = WebService::Discord::Webhook->new( $url );
 
     $webhook->get();
     print "Webhook posting as '" . $webhook->{name} .
@@ -493,12 +493,12 @@ located at L<https://discordapp.com/developers/docs/resources/webhook>.
 
 =head2 new
 
-Constructs and returns a new Net::Discord::Webhook object using the specified
-parameters.
+Constructs and returns a new WebService::Discord::Webhook object using the
+specified parameters.
 
-This function should be passed a hash, containing either a C<url>
-key, or C<token> plus C<id> keys, with values matching the Webhook created
-via the Discord UI.
+This function should be passed a hash, containing either a C<url> key, or
+C<token> plus C<id> keys, with values matching the Webhook created via the
+Discord web UI.
 
 The following optional parameters are also available:
 
@@ -528,8 +528,8 @@ to be a C<url>.
 
 =head2 get
 
-Retrieves server-side information for the Webhook, and caches the result
-in the Net::Discord::Webhook object.  No parameters are expected.
+Retrieves server-side information for the Webhook, and caches the result in
+the WebService::Discord::Webhook object.  No parameters are expected.
 
 Information which can be returned from the remote service include:
 
@@ -567,8 +567,8 @@ image.
 As a special case, if C<modify> is called with a scalar parameter, it is
 assumed to be a new username.
 
-The return value for this function is the same as C<get>, and the results
-are also cached as above.
+The return value for this function is the same as C<get>, and the results are
+also cached as above.
 
 =head2 destroy
 
@@ -625,7 +625,7 @@ Post "embedded rich content" to the channel.  This is useful for posting
 messages with image attachments, colorful borders or backgrounds, etc.
 
 The value should be an embed object (hashref) to post.  These values are
-not checked by Net::Discord::Webhook.  For information on the expected
+not checked by WebService::Discord::Webhook.  For information on the expected
 data structure, refer to Discord's documentation on Channel Embed Objects:
 L<https://discordapp.com/developers/docs/resources/channel#embed-object>
 
@@ -689,10 +689,10 @@ success.
 
 Executes a Github-compatible Webhook.
 
-The function should be passed a hash containing two keys: C<json> as the
-JSON string of a Github webhook, and C<event> as the string containing
-the name of the Github event.  The value for C<event> is passed to Discord
-in the C<X-GitHub-Event> header.
+The function should be passed a hash containing two keys: C<json> as the JSON
+string of a Github webhook, and C<event> as the string containing the name of
+the Github event.  The value for C<event> is passed to Discord in the
+C<X-GitHub-Event> header.
 
 More information about the format of a Github webhook is available on the
 Github API reference at L<https://developer.github.com/webhooks>.
@@ -708,7 +708,7 @@ of C<wait>.
 
 =head1 LICENSE
 
-This is released under the Artistic License. See L<perlartistic>.
+This is released under the Artistic License.  See L<perlartistic>.
 
 =head1 AUTHOR
 

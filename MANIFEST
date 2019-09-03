@@ -1,6 +1,4 @@
-xt/data/mandrill.png
-xt/webhook-execute.t
 MANIFEST
 README.pod
 Makefile.PL
-lib/Net/Discord/Webhook.pm
+lib/WebService/Discord/Webhook.pm

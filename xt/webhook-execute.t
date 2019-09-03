@@ -5,7 +5,7 @@ use warnings;
 #  Greg Kennedy 2019
 use Test::More;
 
-use Net::Discord::Webhook;
+use WebService::Discord::Webhook;
 use JSON::PP qw(decode_json);
 use Getopt::Long;
 
@@ -18,7 +18,7 @@ if (!defined $url) { BAIL_OUT( "Error: --url is required: try running with `prov
 ## CONSTRUCTOR
 # Create webhook client object
 my $webhook;
-ok( $webhook = Net::Discord::Webhook->new(url => $url, wait => 1), "Create webhook object" );
+ok( $webhook = WebService::Discord::Webhook->new(url => $url, wait => 1), "Create webhook object" );
 
 ## GET
 # Get data

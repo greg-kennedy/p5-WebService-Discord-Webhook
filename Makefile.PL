@@ -1,10 +1,10 @@
 use ExtUtils::MakeMaker;
  
 WriteMakefile(
-    NAME            => 'Net::Discord::Webhook',
+    NAME            => 'WebService::Discord::Webhook',
     AUTHOR          => 'Greg Kennedy <kennedy.greg@gmail.com>',
-    VERSION_FROM    => 'lib/Net/Discord/Webhook.pm',
-    ABSTRACT_FROM   => 'lib/Net/Discord/Webhook.pm',
+    VERSION_FROM    => 'lib/WebService/Discord/Webhook.pm',
+    ABSTRACT_FROM   => 'lib/WebService/Discord/Webhook.pm',
     LICENSE         => 'artistic_2',
     PREREQ_PM       => {
       'HTTP::Tiny' => 0,
