@@ -49,14 +49,14 @@ sub new {
   # check parameters
   my ( $id, $token );
   if ( $params{url} ) {
-    if ( $params{url} =~ m/^\Q$BASE_URL\E\/webhooks\/(\d+)\/([^\/?]+)/ ) {
+    if ( $params{url} =~ m{discordapp\.com/api/webhooks/(\d+)/([^/?]+)}i ) {
       $id    = $1;
       $token = $2;
     } else {
       croak "Failed to parse ID and Token from URL";
     }
   } elsif ( $params{id} && $params{token} ) {
-    if ( $params{id} =~ m/^\d+$/ && $params{token} =~ m/^[^\/?]+$/ ) {
+    if ( $params{id} =~ m/^\d+$/ && $params{token} =~ m{^[^/?]+$} ) {
       $id    = $params{id};
       $token = $params{token};
     } else {

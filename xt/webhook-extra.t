@@ -10,15 +10,20 @@ use JSON::PP qw(decode_json);
 use Getopt::Long;
 
 my $url;
-GetOptions( "url=s"   => \$url ) or BAIL_OUT("Error in command line arguments.");
-if (!defined $url) { BAIL_OUT( "Error: --url is required: try running with `prove -b xt :: --url <discord_webhook_url>`" ) }
+GetOptions( "url=s" => \$url ) or BAIL_OUT("Error in command line arguments.");
+if ( !defined $url ) {
+  BAIL_OUT(
+"Error: --url is required: try running with `prove -b xt :: --url <discord_webhook_url>`"
+  );
+}
 
 #####################
 
 ## CONSTRUCTOR
 # Create webhook client object
 my $webhook;
-ok( $webhook = WebService::Discord::Webhook->new(url => $url, wait => 1), "Create webhook object" );
+ok( $webhook = WebService::Discord::Webhook->new( url => $url, wait => 1 ),
+  "Create webhook object" );
 
 ## GET
 # Get data
@@ -30,20 +35,32 @@ open my $fp, '<:raw', 'xt/data/mandrill.png' or die $!;
 read $fp, my $image, -s 'xt/data/mandrill.png';
 close $fp;
 
-ok( $webhook->modify( name => "Webhook Test", avatar => $image ), "PATCH method - new name and avatar" );
+ok( $webhook->modify( name => "Webhook Test", avatar => $image ),
+  "PATCH method - new name and avatar" );
+
 #ok( $webhook->modify( avatar => undef ), "PATCH method" );
 is( $webhook->{name}, 'Webhook Test', 'Name change OK' );
-ok( ! $webhook->modify("A" x 256), "PATCH method - name too long" );
+ok( !$webhook->modify( "A" x 256 ), "PATCH method - name too long" );
 
 ## EXECUTE
 # try a TTS message post
-isa_ok( $webhook->execute( content => "This is a Webhook Test!", tts => 1 ), 'HASH', 'execute method' );
+isa_ok( $webhook->execute( content => "This is a Webhook Test!", tts => 1 ),
+  'HASH', 'execute method' );
 
 # post a file
-isa_ok( $webhook->execute( username => 'FileUploadTest', content => 'Monkey see, monkey do!', file => { name => 'monkey.png', data => $image } ), 'HASH', 'file upload' );
+isa_ok(
+  $webhook->execute(
+    username => 'FileUploadTest',
+    content  => 'Monkey see, monkey do!',
+    file     => { name => 'monkey.png', data => $image }
+  ),
+  'HASH',
+  'file upload'
+);
 
 # try embed
-my $embed = decode_json('{
+my $embed = decode_json(
+  '{
     "title": "title ~~(did you know you can have markdown here too?)~~",
     "description": "this supports [named links](https://discordapp.com) on top of the previously shown subset of markdown. ```\nyes, even code blocks```",
     "url": "https://discordapp.com",
@@ -88,11 +105,12 @@ my $embed = decode_json('{
         "inline": true
       }
     ]
-}');
+}'
+);
 isa_ok( $webhook->execute( embed => $embed ), 'HASH', 'Embed' );
 
 # message too long
-ok( ! $webhook->execute("A" x 4096), "EXECUTE method - message too long" );
+ok( !$webhook->execute( "A" x 4096 ), "EXECUTE method - message too long" );
 
 ## EXECUTE_GITHUB
 # send github hook
@@ -100,10 +118,12 @@ open $fp, '<:encoding(UTF-8)', 'xt/data/github-pull-request.json' or die $!;
 my $json = do { local $/; <$fp> };
 close $fp;
 
-ok( $webhook->execute_github( event => 'pull_request', json => $json ), "execute_github method" );
+ok( $webhook->execute_github( event => 'pull_request', json => $json ),
+  "execute_github method" );
 
 ## EXECUTE_SLACK
 # send slack hook
-is( $webhook->execute_slack('{"text":"This is the Slack endpoint."}'), 'ok', "execute_slack method" );
+is( $webhook->execute_slack('{"text":"This is the Slack endpoint."}'),
+  'ok', "execute_slack method" );
 
 done_testing();

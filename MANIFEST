@@ -2,3 +2,4 @@ MANIFEST
 README.pod
 Makefile.PL
 lib/WebService/Discord/Webhook.pm
+t/webhook.t
