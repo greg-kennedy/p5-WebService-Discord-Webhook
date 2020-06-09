@@ -291,6 +291,7 @@ sub execute {
   if ( $params{username} )   { $request{username}   = $params{username} }
   if ( $params{avatar_url} ) { $request{avatar_url} = $params{avatar_url} }
   if ( $params{tts} )        { $request{tts}        = JSON::PP::true }
+  if ( $params{allowed_mentions} ) { $request{allowed_mentions} = $params{allowed_mentions} }
 
   # compose URL
   my $url = $BASE_URL . '/webhooks/' . $self->{id} . '/' . $self->{token};
