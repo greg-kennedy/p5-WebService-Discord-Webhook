@@ -62,8 +62,8 @@ isa_ok(
 my $embed = decode_json(
   '{
     "title": "title ~~(did you know you can have markdown here too?)~~",
-    "description": "this supports [named links](https://discordapp.com) on top of the previously shown subset of markdown. ```\nyes, even code blocks```",
-    "url": "https://discordapp.com",
+    "description": "this supports [named links](https://discord.com) on top of the previously shown subset of markdown. ```\nyes, even code blocks```",
+    "url": "https://discord.com",
     "color": 3491017,
     "timestamp": "2019-09-02T07:43:25.448Z",
     "footer": {
@@ -78,7 +78,7 @@ my $embed = decode_json(
     },
     "author": {
       "name": "author name",
-      "url": "https://discordapp.com",
+      "url": "https://discord.com",
       "icon_url": "https://cdn.discordapp.com/embed/avatars/0.png"
     },
     "fields": [

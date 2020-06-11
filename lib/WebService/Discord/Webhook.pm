@@ -19,10 +19,10 @@ use File::Spec;
 use Carp qw(croak carp);
 
 # PACKAGE VARS
-our $VERSION = '1.00';
+our $VERSION = '1.10';
 
 # Base URL for all API requests
-our $BASE_URL = 'https://discordapp.com/api';
+our $BASE_URL = 'https://discord.com/api';
 
 ##################################################
 
@@ -49,7 +49,7 @@ sub new {
   # check parameters
   my ( $id, $token );
   if ( $params{url} ) {
-    if ( $params{url} =~ m{discordapp\.com/api/webhooks/(\d+)/([^/?]+)}i ) {
+    if ( $params{url} =~ m{discord(?:app)?\.com/api/webhooks/(\d+)/([^/?]+)}i ) {
       $id    = $1;
       $token = $2;
     } else {
@@ -451,7 +451,7 @@ WebService::Discord::Webhook - A module for posting messages to Discord chat ser
 
 =head1 VERSION
 
-version 1.00
+version 1.10
 
 =head1 SYNOPSIS
 
@@ -482,13 +482,13 @@ in a game.
 
 An example Discord Webhook URL looks like this:
 
-    https://discordapp.com/api/webhooks/2237...5344/3d89...cf11
+    https://discord.com/api/webhooks/2237...5344/3d89...cf11
 
 where the first magic number ("2237...5344") is the C<id> and the second
 ("3d89...cf11") is the C<token>.
 
 For more information on Discord Webhooks, see the Discord API documentation
-located at L<https://discordapp.com/developers/docs/resources/webhook>.
+located at L<https://discord.com/developers/docs/resources/webhook>.
 
 =head1 METHODS
 
@@ -628,7 +628,7 @@ messages with image attachments, colorful borders or backgrounds, etc.
 The value should be an embed object (hashref) to post.  These values are
 not checked by WebService::Discord::Webhook.  For information on the expected
 data structure, refer to Discord's documentation on Channel Embed Objects:
-L<https://discordapp.com/developers/docs/resources/channel#embed-object>
+L<https://discord.com/developers/docs/resources/channel#embed-object>
 
 C<embed> cannot be combined with C<file>.
 
@@ -655,6 +655,19 @@ avatar at avatar_url).  To upload a new avatar to Discord, see C<modify>.
 =item * tts:
 If set, posts as a TTS message.  TTS messages appear as normal, but will also
 be read aloud to users in the channel (if permissions allow).
+
+=item * allowed_mentions:
+Customize behavior of pings ("at mentions") in a message.  By default, Discord
+will parse the message content looking for users, roles, and groups to notify.
+Sometimes this is undesired - for example, when reposting content into the
+channel, it would be impolite to let a news summary that includes "@everyone"
+to ping the entire channel.  This parameter instructs Discord on how to
+correctly parse (or suppress) mentions from the posted message.
+
+The value should be an allowed_mentions object (hashref) to post.  These values
+are not checked by WebService::Discord::Webhook.  For details about the data
+structure, refer to Discord's documentation on Allowed Mentions Objects:
+L<https://discord.com/developers/docs/resources/channel#allowed-mentions-object>
 
 =back
 
