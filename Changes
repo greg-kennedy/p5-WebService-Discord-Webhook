@@ -4,6 +4,7 @@ Revision history for Perl module WebService::Discord::Webhook
 
   * Updated webhook URL to new domain name.
   * Added "allowed_mentions" to execute() parameters.
+  * Replace warnings with errors. Users should now catch exceptions with eval.
 
 1.00 2019-09-04
 

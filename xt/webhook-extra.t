@@ -40,7 +40,9 @@ ok( $webhook->modify( name => "Webhook Test", avatar => $image ),
 
 #ok( $webhook->modify( avatar => undef ), "PATCH method" );
 is( $webhook->{name}, 'Webhook Test', 'Name change OK' );
-ok( !$webhook->modify( "A" x 256 ), "PATCH method - name too long" );
+eval { $webhook->modify( "A" x 256 ) };
+print STDERR "\n\n$@\n\n\n";
+like( $@, qr/^HTTP ERROR:/, "PATCH method - name too long" );
 
 ## EXECUTE
 # try a TTS message post
@@ -53,6 +55,20 @@ isa_ok(
     username => 'FileUploadTest',
     content  => 'Monkey see, monkey do!',
     file     => { name => 'monkey.png', data => $image }
+  ),
+  'HASH',
+  'file upload'
+);
+
+# post two files
+isa_ok(
+  $webhook->execute(
+    username => 'FilesUploadTest',
+    content  => 'Multiple Files!',
+    files    => [
+        { name => 'monkey_1.png', data => $image },
+        { name => 'monkey_2.png', data => $image },
+    ]
   ),
   'HASH',
   'file upload'
@@ -110,7 +126,8 @@ my $embed = decode_json(
 isa_ok( $webhook->execute( embed => $embed ), 'HASH', 'Embed' );
 
 # message too long
-ok( !$webhook->execute( "A" x 4096 ), "EXECUTE method - message too long" );
+eval { $webhook->execute( "A" x 4096 ) };
+like( $@, qr/^HTTP ERROR:/, "EXECUTE method - message too long" );
 
 ## EXECUTE_GITHUB
 # send github hook
@@ -118,8 +135,8 @@ open $fp, '<:encoding(UTF-8)', 'xt/data/github-pull-request.json' or die $!;
 my $json = do { local $/; <$fp> };
 close $fp;
 
-ok( $webhook->execute_github( event => 'pull_request', json => $json ),
-  "execute_github method" );
+eval { $webhook->execute_github( event => 'pull_request', json => $json ) };
+ok( ! $@, "execute_github method" );
 
 ## EXECUTE_SLACK
 # send slack hook
