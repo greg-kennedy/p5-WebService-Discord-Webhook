@@ -68,3 +68,6 @@
 ^MANIFEST\.
 ^xt
 \.tar\.gz$
+
+# skip the Travis CI config file
+^\.travis\.yml$
