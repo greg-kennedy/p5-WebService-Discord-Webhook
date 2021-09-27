@@ -325,7 +325,7 @@ sub execute {
       # Discord ignores content-type, just put octet-stream for everything
       $content .= "Content-Type: application/octet-stream\r\n";
       $content .= "\r\n";
-      $content .= $file->{data} . "\r\n";
+      $content .= $file->{data};
     }
 
     # add the json payload for the rest of the message
